@@ -13,19 +13,28 @@ public sealed class RecentList
 {
     private const int MaxItems = 5;
     private readonly List<string> _items = new();
+    private readonly string _storagePath;
+
+    public RecentList(string? storagePath = null)
+    {
+        _storagePath = string.IsNullOrWhiteSpace(storagePath)
+            ? GetDefaultStoragePath()
+            : storagePath;
+
+        var dir = Path.GetDirectoryName(_storagePath);
+        if (!string.IsNullOrWhiteSpace(dir))
+            Directory.CreateDirectory(dir);
+    }
 
     public IReadOnlyList<string> Items => _items;
 
-    private static string StoragePath
+    private static string GetDefaultStoragePath()
     {
-        get
-        {
-            var dir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "LaboratoryTextEditor");
-            Directory.CreateDirectory(dir);
-            return Path.Combine(dir, "recent.json");
-        }
+        var dir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "LaboratoryTextEditor");
+        Directory.CreateDirectory(dir);
+        return Path.Combine(dir, "recent.json");
     }
 
     public void Add(string fileName)
@@ -53,7 +62,7 @@ public sealed class RecentList
         try
         {
             var json = JsonSerializer.Serialize(_items);
-            File.WriteAllText(StoragePath, json);
+            File.WriteAllText(_storagePath, json);
         }
         catch
         {
@@ -67,13 +76,16 @@ public sealed class RecentList
 
         try
         {
-            if (!File.Exists(StoragePath))
+            if (!File.Exists(_storagePath))
                 return;
 
-            var json = File.ReadAllText(StoragePath);
+            var json = File.ReadAllText(_storagePath);
             var loaded = JsonSerializer.Deserialize<List<string>>(json) ?? new List<string>();
 
-            foreach (var item in loaded.Where(s => !string.IsNullOrWhiteSpace(s)))
+            // Add() вставляет элемент в начало списка (MRU),
+            // поэтому при загрузке в прямом порядке список разворачивается.
+            // Обходим в обратном порядке, чтобы сохранить исходный порядок (MRU -> LRU).
+            foreach (var item in loaded.Where(s => !string.IsNullOrWhiteSpace(s)).Reverse())
                 Add(item);
         }
         catch
